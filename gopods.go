@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"text/template"
 	"os/exec"
+	"errors"
 	"path"
 	"io/ioutil"
     "path/filepath"
@@ -30,10 +31,11 @@ var opts struct {
 	NoWait bool `long:"nowait"`
 	DryRun bool `long:"dryrun"`
 	Poll float32 `long:"poll" default:"3.0"`
-	Pace float32 `long:"pace" default:"3.0"`
+	Pace float32 `long:"pace" default:"1.0"`
 	MaxRunning int `long:"maxrunning" default:"100000"`
 	MaxPending int `long:"maxpending" default:"3"`
 	ItemFile string `short:"i" long:"items"`
+	JsonFile string `short:"j" long:"json"`
 	Positional struct {
 		Input string `required:"yes"`
 	} `positional-args:"yes"`
@@ -235,6 +237,14 @@ func ReadItems(fname string) []map[string]string {
 	return result
 }
 
+func ReadItemsJson(fname string) []map[string]string {
+	data, err := ioutil.ReadFile(fname)
+	Handle(err)
+	var result []map[string]string
+	err = json.Unmarshal(data, &result)
+	return result
+}
+
 func CountActive() int {
 	active := status_counter["Pending"]
 	active += status_counter["Running"]
@@ -277,7 +287,15 @@ func main() {
 	Handle(err)
 	yamltemplate = string(s)
 	Validate(opts.ItemFile!= "", "must provide --itemfile")
-	items := ReadItems(opts.ItemFile)
+	var items []map[string]string
+	if opts.ItemFile != "" {
+		Validate(opts.JsonFile == "", "must specify only one of itemfile, jsonfile")
+		items = ReadItems(opts.ItemFile)
+	} else if opts.JsonFile != "" {
+		items = ReadItemsJson(opts.JsonFile)
+	} else {
+		panic(errors.New("must specify either itemfile or jsonfile"))
+	}
 	for index, dict := range items {
 		vars := TemplateVars{index, dict["item"], dict}
 		yaml := ExpandVars(yamltemplate, vars)

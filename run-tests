@@ -1,0 +1,5 @@
+#!/bin/bash
+
+rm -rf GOPODS
+go build
+gopods -i items testpod.yml --maxrunning=6
