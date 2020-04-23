@@ -25,7 +25,7 @@ var opts struct {
 	PrintSpecs bool `short:"P"`
 	NoFileStatus bool `short:"N"`
 	Kubectl string `long:"kubectl" default:"microk8s kubectl"`
-	Logdir string `long:"logdir"`
+	Logdir string `long:"logdir" default:"./GOPODS"`
 	NoRerun bool `long:"norerun"`
 	NoWait bool `long:"nowait"`
 	DryRun bool `long:"dryrun"`
@@ -41,10 +41,26 @@ var opts struct {
 
 var Parser = flags.NewParser(&opts, flags.Default)
 
+func GetEnv(key, dflt string) string {
+	value, present := os.LookupEnv(key)
+	if present {
+		return value
+	}
+	return dflt
+}
+
+func OpenLog(name, dflt string) *log.Logger {
+	fname := GetEnv("log_"+name, dflt)
+	stream, err := os.Create(fname)
+	Handle(err)
+	return log.New(stream, "["+name+"] ", 0)
+}
+
 var AllPhases []string = strings.Split(
 	"None Pending Running Terminating Succeeded Failed"," ")
-var infolog *log.Logger = log.New(os.Stderr, "info: ", 0)
-var errlog *log.Logger = log.New(os.Stderr, "error: ", 0)
+var infolog *log.Logger = OpenLog("info", "/dev/stderr")
+var errlog *log.Logger = OpenLog("error", "/dev/stderr")
+var debuglog *log.Logger = OpenLog("debug", "/dev/null")
 var raw_status string = ""
 var pod_status map[string]string = map[string]string{}
 var status_counter map[string]int = map[string]int{}
@@ -107,10 +123,9 @@ func ExpandVars(s string, vars TemplateVars) string {
 func KubeCtl(input string, args... string) ([]byte, error) {
 	argv := strings.Split(opts.Kubectl, " ")
 	argv = append(argv, args...)
-	infolog.Println(strings.Join(argv,"|"))
+	debuglog.Println(strings.Join(argv,"|"))
 	proc := exec.Command(argv[0], argv[1:]...)
 	if input != "" {
-		infolog.Println("***INPUT***", input)
 		stdin, err := proc.StdinPipe()
 		Handle(err)
 		go func() {
@@ -122,7 +137,9 @@ func KubeCtl(input string, args... string) ([]byte, error) {
 	Handle(err)
 	go func() {
 		output, _ := ioutil.ReadAll(stderr)
-		errlog.Print(string(output))
+		if string(output) != "" {
+			errlog.Print(string(output))
+		}
 	}()
 	out, err := proc.Output()
 	return out, err
@@ -160,13 +177,15 @@ func GetFileStatus() {
 		f = path.Base(f)
 		f = strings.TrimSuffix(f, path.Ext(f))
 		pod_status[f] = "Succeeded"
+		debuglog.Println("logstatus", f, "Succeeded")
 	}
-	errs, err := filepath.Glob(path.Join(opts.Logdir, "*.log"))
+	errs, err := filepath.Glob(path.Join(opts.Logdir, "*.err"))
 	Handle(err)
 	for _, f := range errs {
 		f = path.Base(f)
 		f = strings.TrimSuffix(f, path.Ext(f))
 		pod_status[f] = "Failed"
+		debuglog.Println("logstatus", f, "Failed")
 	}
 }
 
@@ -201,7 +220,6 @@ func KuPoll() {
 		}
 		status_counter[status]++
 	}
-	infolog.Println(status_counter)
 }
 
 func ReadItems(fname string) []map[string]string {
@@ -215,6 +233,21 @@ func ReadItems(fname string) []map[string]string {
 		result = append(result, item)
 	}
 	return result
+}
+
+func CountActive() int {
+	active := status_counter["Pending"]
+	active += status_counter["Running"]
+	active += status_counter["Terminating"]
+	return active
+}
+
+func GetStatus() string {
+	return fmt.Sprintf("Pending %-3d Running %-6d Succeeded %-6d Failed %-6d",
+				   status_counter["Pending"],
+				   status_counter["Running"],
+				   status_counter["Succeeded"],
+				   status_counter["Failed"])
 }
 
 func main() {
@@ -232,6 +265,14 @@ func main() {
 			os.Exit(1)
 		}
 	}
+	lstat, err := os.Stat(opts.Logdir)
+	if err != nil {
+		err := os.Mkdir(opts.Logdir, 0777)
+		Handle(err)
+		lstat, err = os.Stat(opts.Logdir)
+		Handle(err)
+	}
+	Validate(lstat.IsDir(), "not a directory:", opts.Logdir)
 	s, err := ioutil.ReadFile(opts.Positional.Input)
 	Handle(err)
 	yamltemplate = string(s)
@@ -241,10 +282,9 @@ func main() {
 		vars := TemplateVars{index, dict["item"], dict}
 		yaml := ExpandVars(yamltemplate, vars)
 		podname := GetPodName([]byte(yaml))
-		if opts.PrintSpecs {
-			infolog.Println(yaml)
-		}
 		KuPoll()
+		frac := fmt.Sprintf("%6d/%-6d", index, len(items))
+		infolog.Println(frac, GetStatus())
 		status := pod_status[podname]
 		if status == "Succeeded" {
 			continue
@@ -253,8 +293,8 @@ func main() {
 			continue
 		}
 		for {
-			if status_counter["Pending"] <= opts.MaxPending &&
-			   status_counter["Running"] <= opts.MaxRunning {
+			if status_counter["Pending"] < opts.MaxPending &&
+			   status_counter["Running"] < opts.MaxRunning {
 				   break
 			}
 			Sleep(opts.Poll)
@@ -268,14 +308,12 @@ func main() {
 	}
 	if !opts.NoWait {
 		for {
-			active := status_counter["Terminating"]
-			active += status_counter["Pending"]
-			active += status_counter["Running"]
-			if active == 0 {
+			if CountActive() == 0 {
 				break
 			}
 			Sleep(opts.Poll)
 			KuPoll()
+			infolog.Println("waiting", GetStatus())
 		}
 	}
 	KuPoll()
