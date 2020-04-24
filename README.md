@@ -35,6 +35,13 @@ spec:
         process-shard |
         gsutil cp - gs://bucket/output-{{.Item}}.tar |
     imagePullPolicy: IfNotPresent
+    resources:
+      requests:
+        cpu: 2
+        memory: 4G
+      limits:
+        cpu: 2
+        memory: 4G
   restartPolicy: Never
 ```
 
@@ -54,8 +61,8 @@ $ qupods -i shardlist process.yaml
 This will submit jobs for all the items in the `shardlist`, but it will
 schedule them so that the Kubernetes scheduler only ever has a small number
 of new jobs pending. When a job is finished, `qujobs` will automatically
-retrieve the corresponding log file and store it in `QUJOBS/name.log` or
-`QUJOBS/name.err`, depending on whether the job completed successfully
+retrieve the corresponding log file and store it in `./QUJOBS/name.log` or
+`./QUJOBS/name.err`, depending on whether the job completed successfully
 or had errors.
 
 That's really all there is to it. There are a few options you can use:
@@ -65,6 +72,7 @@ That's really all there is to it. There are a few options you can use:
 - you can override the default `kubectl` command
 - by default, `qupods` won't reschedule jobs for which there is log file already,
   but you can override that (or simply remove the log files)
+- you can override the log directory (default `./QUJOBS`)
 
 # Q&A
 
