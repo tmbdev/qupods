@@ -76,13 +76,18 @@ That's really all there is to it. There are a few options you can use:
 
 # Q&A
 
-*Why don't you use the Kubernetes `Job` spec?* It tends not to scale too well
-to thousands of jobs, and it doesn't automatically download the logs.
+*Why don't you use the Kubernetes `Job` spec?*
 
-*Why don't you use a workflow system?* Workflow systems are certainly another
-good solution to this problem, but they tend to be more effort to set up and
-use.
+It tends not to scale too well to thousands of jobs, and it doesn't
+automatically download the logs. Furthermore, you still need a tool
+to generate the sequence of job specifications from a template and items.
+
+*Why don't you use a workflow system?*
+
+Workflow systems are certainly another good solution to this problem,
+but they tend to be more effort to set up and use.
 
 *I don't want to run this on my workstation because I may not remain connected
-to the Kubernetes cluster. I want a job controller running on the cluster.* You
-can run `qupods` inside its own Docker container on the cluster.
+to the Kubernetes cluster. I want a job controller running on the cluster.* 
+
+You can run `qupods` inside its own Docker container on the cluster.
