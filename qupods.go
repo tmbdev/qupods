@@ -26,7 +26,7 @@ var opts struct {
 	PrintSpecs bool `short:"P"`
 	NoFileStatus bool `short:"N"`
 	Kubectl string `long:"kubectl" default:"microk8s kubectl"`
-	Logdir string `long:"logdir" default:"./GOPODS"`
+	Logdir string `long:"logdir" default:"./QUPODS"`
 	NoRerun bool `long:"norerun"`
 	NoWait bool `long:"nowait"`
 	DryRun bool `long:"dryrun"`
@@ -311,8 +311,9 @@ func main() {
 			continue
 		}
 		for {
-			if status_counter["Pending"] < opts.MaxPending &&
-			   status_counter["Running"] < opts.MaxRunning {
+			pending := status_counter["Pending"]
+		    running := status_counter["Running"]
+			if pending <= opts.MaxPending && running+pending <= opts.MaxRunning {
 				   break
 			}
 			Sleep(opts.Poll)

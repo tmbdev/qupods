@@ -1,0 +1,6 @@
+#!/bin/bash
+set -e
+set -x
+rm -rf QUPODS
+(cd .. && go build -o tests/qupods)
+./qupods -i items testpod.yml --maxrunning=6
