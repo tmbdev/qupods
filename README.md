@@ -84,10 +84,18 @@ to generate the sequence of job specifications from a template and items.
 
 *Why don't you use a workflow system?*
 
-Workflow systems are certainly another good solution to this problem,
-but they tend to be more effort to set up and use.
+Workflow systems are a good solution for many large scale processing
+applications. But in return for being more powerful, they also tend to be
+more difficult to configure. Which solution is better depends on your
+application. For many simple problems, `qujobs -i items pod.yaml` is
+an easier solution.
 
 *I don't want to run this on my workstation because I may not remain connected
-to the Kubernetes cluster. I want a job controller running on the cluster.* 
+to the Kubernetes cluster. I want a job controller running on the cluster.*
 
 You can run `qupods` inside its own Docker container on the cluster.
+That is, `qupods` can function like many of the other Kubernetes workflow
+and job controller systems that themselves run inside a Kubernetes cluster,
+but instead of a special web interface and configuration language, you simply
+execute a container with containing `qupods` and your scheduling problem described
+in shell.

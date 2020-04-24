@@ -22,14 +22,11 @@ import (
 )
 
 var opts struct {
-	Verbose bool   `short:"v"`
-	PrintSpecs bool `short:"P"`
-	NoFileStatus bool `short:"N"`
-	Kubectl string `long:"kubectl" default:"microk8s kubectl"`
-	Logdir string `long:"logdir" default:"./QUPODS"`
-	NoRerun bool `long:"norerun"`
-	NoWait bool `long:"nowait"`
-	DryRun bool `long:"dryrun"`
+	Verbose bool   `short:"v" description:"verbose output"`
+	PrintSpecs bool `short:"P" description:"print specs before kubectl apply"`
+	Kubectl string `long:"kubectl" default:"microk8s kubectl" description:"kubectl command"`
+	Logdir string `long:"logdir" default:"./QUPODS" description:"log directory"`
+	NoWait bool `long:"nowait" description:"after submitting all jobs, don't wait for completion"`
 	Poll float32 `long:"poll" default:"3.0"`
 	Pace float32 `long:"pace" default:"1.0"`
 	MaxRunning int `long:"maxrunning" default:"100000"`
@@ -167,9 +164,6 @@ func ChangeStatus(podname, ostatus, nstatus string) {
 }
 
 func GetFileStatus() {
-	if opts.NoFileStatus {
-		return
-	}
 	if opts.Logdir == "" {
 		return
 	}
@@ -304,10 +298,7 @@ func main() {
 		frac := fmt.Sprintf("%6d/%-6d", index, len(items))
 		infolog.Println(frac, GetStatus())
 		status := pod_status[podname]
-		if status == "Succeeded" {
-			continue
-		}
-		if opts.NoRerun && status == "Failed" {
+		if status == "Succeeded" || status == "Failed" {
 			continue
 		}
 		for {
