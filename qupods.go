@@ -100,7 +100,6 @@ func ExpandBraces(s string) []string {
 	lohi := strings.Split(sub, "..")
 	lo, _ := strconv.Atoi(lohi[0])
 	hi, _ := strconv.Atoi(lohi[1])
-	fmt.Println(lo, hi)
 	prefix := s[:loc[0]]
 	rest := ExpandBraces(s[loc[1]:])
 	result := make([]string, 0, 100)
@@ -307,7 +306,6 @@ func main() {
 	s, err := ioutil.ReadFile(opts.Positional.Input)
 	Handle(err)
 	yamltemplate = string(s)
-	Validate(opts.ItemFile != "", "must provide --itemfile")
 	var items []map[string]string
 	if opts.ItemFile != "" {
 		Validate(opts.JsonFile == "", "must specify only one of itemfile, jsonfile, braces")
@@ -318,7 +316,7 @@ func main() {
 		items = ReadItemsJson(opts.JsonFile)
 	} else if opts.Braces != "" {
 		list := ExpandBraces(opts.Braces)
-		items := make([]map[string]string, len(list))
+		items = make([]map[string]string, len(list))
 		for i, item := range list {
 			items[i] = map[string]string{"item": item}
 		}
