@@ -1,20 +1,22 @@
 package main
 
 import (
-	"fmt"
-	"log"
-	"io"
-	"os"
-	"strings"
-	"bytes"
-	"text/template"
-	"os/exec"
-	"errors"
-	"path"
-	"io/ioutil"
-    "path/filepath"
-	"encoding/json"
 	"bufio"
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"io/ioutil"
+	"log"
+	"os"
+	"os/exec"
+	"path"
+	"path/filepath"
+	"regexp"
+	"strconv"
+	"strings"
+	"text/template"
 	"time"
 
 	"github.com/jessevdk/go-flags"
@@ -22,17 +24,18 @@ import (
 )
 
 var opts struct {
-	Verbose bool   `short:"v" description:"verbose output"`
-	PrintSpecs bool `short:"P" description:"print specs before kubectl apply"`
-	Kubectl string `long:"kubectl" default:"microk8s kubectl" description:"kubectl command"`
-	Logdir string `long:"logdir" default:"./QUPODS" description:"log directory"`
-	NoWait bool `long:"nowait" description:"after submitting all jobs, don't wait for completion"`
-	Poll float32 `long:"poll" default:"3.0"`
-	Pace float32 `long:"pace" default:"1.0"`
-	MaxRunning int `long:"maxrunning" default:"100000"`
-	MaxPending int `long:"maxpending" default:"3"`
-	ItemFile string `short:"i" long:"items"`
-	JsonFile string `short:"j" long:"json"`
+	Verbose    bool    `short:"v" description:"verbose output"`
+	PrintSpecs bool    `short:"P" description:"print specs before kubectl apply"`
+	Kubectl    string  `long:"kubectl" default:"microk8s kubectl" description:"kubectl command"`
+	Logdir     string  `long:"logdir" default:"./QUPODS" description:"log directory"`
+	NoWait     bool    `long:"nowait" description:"after submitting all jobs, don't wait for completion"`
+	Poll       float32 `long:"poll" default:"3.0" description:"polling frequency in seconds"`
+	Pace       float32 `long:"pace" default:"1.0" description:"submission pace in seconds"`
+	MaxRunning int     `long:"maxrunning" default:"100000" description:"max running jobs"`
+	MaxPending int     `long:"maxpending" default:"3" description:"max pending jobs"`
+	ItemFile   string  `short:"i" long:"items" description:"items as text lines in file"`
+	JsonFile   string  `short:"j" long:"json" description:"items as dict list in JSON"`
+	Braces     string  `short:"b" long:"braces" description:"items using brace expansion"`
 	Positional struct {
 		Input string `required:"yes"`
 	} `positional-args:"yes"`
@@ -56,7 +59,7 @@ func OpenLog(name, dflt string) *log.Logger {
 }
 
 var AllPhases []string = strings.Split(
-	"None Pending Running Terminating Succeeded Failed"," ")
+	"None Pending Running Terminating Succeeded Failed", " ")
 var infolog *log.Logger = OpenLog("info", "/dev/stderr")
 var errlog *log.Logger = OpenLog("error", "/dev/stderr")
 var debuglog *log.Logger = OpenLog("debug", "/dev/null")
@@ -86,6 +89,30 @@ func Validate(ok bool, args ...interface{}) {
 	os.Exit(1)
 }
 
+// expand {000..123} notation in strings (similar to shell)
+func ExpandBraces(s string) []string {
+	pattern := regexp.MustCompile("[{][0-9]+[.][.][0-9]+[}]")
+	loc := pattern.FindStringIndex(s)
+	if len(loc) == 0 {
+		return []string{s}
+	}
+	sub := s[loc[0]+1 : loc[1]-1]
+	lohi := strings.Split(sub, "..")
+	lo, _ := strconv.Atoi(lohi[0])
+	hi, _ := strconv.Atoi(lohi[1])
+	fmt.Println(lo, hi)
+	prefix := s[:loc[0]]
+	rest := ExpandBraces(s[loc[1]:])
+	result := make([]string, 0, 100)
+	for i := lo; i <= hi; i++ {
+		for _, s := range rest {
+			expanded := fmt.Sprintf("%s%0*d%s", prefix, len(lohi[0]), i, s)
+			result = append(result, expanded)
+		}
+	}
+	return result
+}
+
 func Sleep(t float32) {
 	nanos := time.Duration(t * 1e9)
 	time.Sleep(nanos)
@@ -105,8 +132,8 @@ func GetPodName(data []byte) string {
 }
 
 type TemplateVars struct {
-	Index int
-	Item string
+	Index  int
+	Item   string
 	Values map[string]string
 }
 
@@ -119,10 +146,10 @@ func ExpandVars(s string, vars TemplateVars) string {
 	return string(buffer.Bytes())
 }
 
-func KubeCtl(input string, args... string) ([]byte, error) {
+func KubeCtl(input string, args ...string) ([]byte, error) {
 	argv := strings.Split(opts.Kubectl, " ")
 	argv = append(argv, args...)
-	debuglog.Println(strings.Join(argv,"|"))
+	debuglog.Println(strings.Join(argv, "|"))
 	proc := exec.Command(argv[0], argv[1:]...)
 	if input != "" {
 		stdin, err := proc.StdinPipe()
@@ -158,7 +185,7 @@ func ChangeStatus(podname, ostatus, nstatus string) {
 		data, err := KubeCtl("", "logs", "pod/"+podname)
 		Handle(err)
 		ioutil.WriteFile(logname, data, 0666)
-		_, err = KubeCtl("", "delete", "pod/"+podname)	
+		_, err = KubeCtl("", "delete", "pod/"+podname)
 		Handle(err)
 	}
 }
@@ -248,10 +275,10 @@ func CountActive() int {
 
 func GetStatus() string {
 	return fmt.Sprintf("Pending %-3d Running %-6d Succeeded %-6d Failed %-6d",
-				   status_counter["Pending"],
-				   status_counter["Running"],
-				   status_counter["Succeeded"],
-				   status_counter["Failed"])
+		status_counter["Pending"],
+		status_counter["Running"],
+		status_counter["Succeeded"],
+		status_counter["Failed"])
 }
 
 func main() {
@@ -280,13 +307,21 @@ func main() {
 	s, err := ioutil.ReadFile(opts.Positional.Input)
 	Handle(err)
 	yamltemplate = string(s)
-	Validate(opts.ItemFile!= "", "must provide --itemfile")
+	Validate(opts.ItemFile != "", "must provide --itemfile")
 	var items []map[string]string
 	if opts.ItemFile != "" {
-		Validate(opts.JsonFile == "", "must specify only one of itemfile, jsonfile")
+		Validate(opts.JsonFile == "", "must specify only one of itemfile, jsonfile, braces")
+		Validate(opts.Braces == "", "must specify only one of itemfile, jsonfile, braces")
 		items = ReadItems(opts.ItemFile)
 	} else if opts.JsonFile != "" {
+		Validate(opts.Braces == "", "must specify only one of itemfile, jsonfile, braces")
 		items = ReadItemsJson(opts.JsonFile)
+	} else if opts.Braces != "" {
+		list := ExpandBraces(opts.Braces)
+		items := make([]map[string]string, len(list))
+		for i, item := range list {
+			items[i] = map[string]string{"item": item}
+		}
 	} else {
 		panic(errors.New("must specify either itemfile or jsonfile"))
 	}
@@ -303,9 +338,9 @@ func main() {
 		}
 		for {
 			pending := status_counter["Pending"]
-		    running := status_counter["Running"]
+			running := status_counter["Running"]
 			if pending <= opts.MaxPending && running+pending <= opts.MaxRunning {
-				   break
+				break
 			}
 			Sleep(opts.Poll)
 			KuPoll()

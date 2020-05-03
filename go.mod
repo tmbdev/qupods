@@ -1,4 +1,4 @@
-module github.com/tmbdev/gopods
+module github.com/tmbdev/qupods
 
 go 1.14
 
